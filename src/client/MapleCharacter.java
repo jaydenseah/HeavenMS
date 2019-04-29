@@ -166,6 +166,7 @@ import server.life.MobSkillFactory;
 import server.maps.MapleMapItem;
 import net.server.audit.locks.MonitoredLockType;
 import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
+import org.apache.mina.util.ConcurrentHashSet;
 
 public class MapleCharacter extends AbstractMapleCharacterObject {
     private static final MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
@@ -249,7 +250,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
     private final Map<Short, MapleQuestStatus> quests;
     private Set<MapleMonster> controlled = new LinkedHashSet<>();
     private Map<Integer, String> entered = new LinkedHashMap<>();
-    private Set<MapleMapObject> visibleMapObjects = new LinkedHashSet<>();
+    private Set<MapleMapObject> visibleMapObjects = new ConcurrentHashSet<>();
     private Map<Skill, SkillEntry> skills = new LinkedHashMap<>();
     private Map<Integer, Integer> activeCoupons = new LinkedHashMap<>();
     private Map<Integer, Integer> activeCouponRates = new LinkedHashMap<>();
@@ -8590,14 +8591,22 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
                 }
             }
         }
+        
+        final boolean chrDied = playerDied;
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                updatePartyMemberHP();    // thanks BHB (BHB88) for detecting a deadlock case within player stats.
 
-        updatePartyMemberHP();
-
-        if (playerDied) {
-            playerDead();
-        } else {
-            checkBerserk(isHidden());
-        }
+                if (chrDied) {
+                    playerDead();
+                } else {
+                    checkBerserk(isHidden());
+                }
+            }
+        };
+        
+        map.registerCharacterStatUpdate(r);
     }
     
     private Pair<MapleStat, Integer> calcHpRatioUpdate(int newHp, int oldHp) {
