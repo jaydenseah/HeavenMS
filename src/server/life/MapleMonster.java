@@ -964,6 +964,19 @@ public class MapleMonster extends AbstractLoadedMapleLife {
         return isBoss() && getTagColor() > 0;
     }
     
+    public void announceMonsterStatus(MapleClient client) {
+        statiLock.lock();
+        try {
+            if (stati.size() > 0) {
+                for (final MonsterStatusEffect mse : this.stati.values()) {
+                    client.announce(MaplePacketCreator.applyMonsterStatus(getObjectId(), mse, null));
+                }
+            }
+        } finally {
+            statiLock.unlock();
+        }
+    }
+    
     @Override
     public void sendSpawnData(MapleClient client) {
         if (hp.get() <= 0) { // mustn't monsterLock this function
@@ -975,16 +988,7 @@ public class MapleMonster extends AbstractLoadedMapleLife {
             client.announce(MaplePacketCreator.spawnMonster(this, false));
         }
         
-        statiLock.lock();
-        try {
-            if (stati.size() > 0) {
-                for (final MonsterStatusEffect mse : this.stati.values()) {
-                    client.announce(MaplePacketCreator.applyMonsterStatus(getObjectId(), mse, null));
-                }
-            }
-        } finally {
-            statiLock.unlock();
-        }
+        announceMonsterStatus(client);
         
         if (hasBossHPBar()) {
             client.announceBossHpBar(this, this.hashCode(), makeBossHPBarPacket());
@@ -1395,7 +1399,7 @@ public class MapleMonster extends AbstractLoadedMapleLife {
         return -1;
     }
     
-    public boolean canUseSkill(MobSkill toUse) {
+    public boolean canUseSkill(MobSkill toUse, boolean apply) {
         if (toUse == null) {
             return false;
         }
@@ -1426,7 +1430,9 @@ public class MapleMonster extends AbstractLoadedMapleLife {
             }
             */
             
-            this.usedSkill(toUse);
+            if (apply) {
+                this.usedSkill(toUse);
+            }
         } finally {
             monsterLock.unlock();
         }
@@ -1880,7 +1886,7 @@ public class MapleMonster extends AbstractLoadedMapleLife {
             }
             
             this.aggroUpdatePuppetVisibility();
-            newController.announce(MaplePacketCreator.controlMonster(this, false, immediateAggro));
+            aggroMonsterControl(newController.getClient(), this, immediateAggro);
             newController.controlMonster(this);
         }
     }
@@ -2048,13 +2054,20 @@ public class MapleMonster extends AbstractLoadedMapleLife {
             
             else if (chrController != null) {
                 chrController.announce(MaplePacketCreator.stopControllingMonster(this.getObjectId()));
-                chrController.announce(MaplePacketCreator.controlMonster(this, false, true));
+                aggroMonsterControl(chrController.getClient(), this, true);
             }
             */
         } else {
             this.setControllerHasAggro(true);
             this.aggroUpdatePuppetVisibility();
         }
+    }
+    
+    private static void aggroMonsterControl(MapleClient c, MapleMonster mob, boolean immediateAggro) {
+        c.announce(MaplePacketCreator.controlMonster(mob, false, immediateAggro));
+        
+        // thanks BHB for noticing puppets disrupting mobstatuses for bowmans
+        mob.announceMonsterStatus(c);
     }
     
     private void aggroRefreshPuppetVisibility(MapleCharacter chrController, MapleSummon puppet) {
@@ -2072,8 +2085,9 @@ public class MapleMonster extends AbstractLoadedMapleLife {
         }
         chrController.announce(MaplePacketCreator.removeSummon(puppet, false));
         
+        MapleClient c = chrController.getClient();
         for (MapleMonster mob : puppetControlled) {
-            chrController.announce(MaplePacketCreator.controlMonster(mob, false, mob.isControllerHasAggro()));
+            aggroMonsterControl(c, mob, mob.isControllerKnowsAboutAggro());
         }
         chrController.announce(MaplePacketCreator.spawnSummon(puppet, false));
     }
@@ -2108,7 +2122,7 @@ public class MapleMonster extends AbstractLoadedMapleLife {
                         controllerHasPuppet = false;
 
                         chrController.announce(MaplePacketCreator.stopControllingMonster(MapleMonster.this.getObjectId()));
-                        chrController.announce(MaplePacketCreator.controlMonster(MapleMonster.this, false, MapleMonster.this.isControllerHasAggro()));
+                        aggroMonsterControl(chrController.getClient(), MapleMonster.this, MapleMonster.this.isControllerHasAggro());
                     }
                 } finally {
                     availablePuppetUpdate = true;
