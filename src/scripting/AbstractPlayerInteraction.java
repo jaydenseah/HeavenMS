@@ -457,6 +457,64 @@ public class AbstractPlayerInteraction {
                 getClient().announce(MaplePacketCreator.updateQuest(getPlayer().getQuest(MapleQuest.getInstance(qid)), false));
         }
         
+        public boolean forceStartQuest(int id) {
+                return forceStartQuest(id, 9010000);
+        }
+
+        public boolean forceStartQuest(int id, int npc) {
+                return startQuest(id, npc);
+        }
+
+        public boolean forceCompleteQuest(int id) {
+                return forceCompleteQuest(id, 9010000);
+        }
+
+        public boolean forceCompleteQuest(int id, int npc) {
+                return completeQuest(id, npc);
+        }
+        
+        public boolean startQuest(short id) {
+                return startQuest((int) id);
+        }
+        
+        public boolean completeQuest(short id) {
+                return completeQuest((int) id);
+        }
+        
+        public boolean startQuest(int id) {
+                return startQuest(id, 9010000);
+        }
+        
+        public boolean completeQuest(int id) {
+                return completeQuest(id, 9010000);
+        }
+        
+        public boolean startQuest(short id, int npcId) {
+                return startQuest((int) id, npcId);
+        }
+        
+        public boolean completeQuest(short id, int npcId) {
+                return completeQuest((int) id, npcId);
+        }
+        
+        public boolean startQuest(int id, int npcId) {
+                try {
+                        return MapleQuest.getInstance(id).forceStart(getPlayer(), npcId);
+                } catch (NullPointerException ex) {
+                        ex.printStackTrace();
+                        return false;
+                }
+        }
+        
+        public boolean completeQuest(int id, int npcId) {
+                try {
+                        return MapleQuest.getInstance(id).forceComplete(getPlayer(), npcId);
+                } catch (NullPointerException ex) {
+                        ex.printStackTrace();
+                        return false;
+                }
+        }
+        
         public Item evolvePet(byte slot, int afterId) {
             MaplePet evolved = null;
             MaplePet target;
@@ -1015,12 +1073,12 @@ public class AbstractPlayerInteraction {
         
 	public boolean createExpedition(MapleExpeditionType type, boolean silent, int minPlayers, int maxPlayers) {
 		MapleExpedition exped = new MapleExpedition(getPlayer(), type, silent, minPlayers, maxPlayers);
-		return getPlayer().getClient().getChannelServer().addExpedition(exped);
+		return exped.addChannelExpedition(getPlayer().getClient().getChannelServer());
 	}
 
 	public void endExpedition(MapleExpedition exped) {
 		exped.dispose(true);
-		getPlayer().getClient().getChannelServer().removeExpedition(exped);
+		exped.removeChannelExpedition(getPlayer().getClient().getChannelServer());
 	}
 
 	public MapleExpedition getExpedition(MapleExpeditionType type) {

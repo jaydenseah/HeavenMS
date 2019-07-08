@@ -136,6 +136,7 @@ public class MapleItemInformationProvider {
     protected Map<Integer, Map<String, Integer>> skillUpgradeCache = new HashMap<>();
     protected Map<Integer, MapleData> skillUpgradeInfoCache = new HashMap<>();
     protected Map<Integer, Pair<Integer, Set<Integer>>> cashPetFoodCache = new HashMap<>();
+    protected Map<Integer, QuestConsItem> questItemConsCache = new HashMap<>();
 
     private MapleItemInformationProvider() {
         loadCardIdData();
@@ -1377,12 +1378,6 @@ public class MapleItemInformationProvider {
         return partyquestItem;
     }
 
-    public int getQuestIdFromItem(int itemId) {
-        MapleData data = getItemData(itemId);
-        int questItem = MapleDataTool.getIntConvert("info/quest", data, 0);
-        return questItem;
-    }
-
     private void loadCardIdData() {
         PreparedStatement ps = null;
         ResultSet rs = null;
@@ -1436,9 +1431,10 @@ public class MapleItemInformationProvider {
         if ((itemId / 10000) != 243) {
             return null;
         }
-        ScriptedItem script = new ScriptedItem(MapleDataTool.getInt("spec/npc", getItemData(itemId), 0),
-        MapleDataTool.getString("spec/script", getItemData(itemId), ""),
-        MapleDataTool.getInt("spec/runOnPickup", getItemData(itemId), 0) == 1);
+        MapleData itemInfo = getItemData(itemId);
+        ScriptedItem script = new ScriptedItem(MapleDataTool.getInt("spec/npc", itemInfo, 0),
+        MapleDataTool.getString("spec/script", itemInfo, ""),
+        MapleDataTool.getInt("spec/runOnPickup", itemInfo, 0) == 1);
         scriptedItemCache.put(itemId, script);
         return scriptedItemCache.get(itemId);
     }
@@ -1589,6 +1585,18 @@ public class MapleItemInformationProvider {
         return (eq.getUpgradeSlots() > 0 || eq.getStr() > 0 || eq.getDex() > 0 || eq.getInt() > 0 || eq.getLuk() > 0 ||
                 eq.getWatk() > 0 || eq.getMatk() > 0 || eq.getWdef() > 0 || eq.getMdef() > 0 || eq.getAcc() > 0 ||
                 eq.getAvoid() > 0 || eq.getSpeed() > 0 || eq.getJump() > 0 || eq.getHp() > 0 || eq.getMp() > 0);
+    }
+    
+    public boolean isUnmerchable(int itemId) {
+        if(ServerConstants.USE_ENFORCE_UNMERCHABLE_CASH && isCash(itemId)) {
+            return true;
+        }
+
+        if (ServerConstants.USE_ENFORCE_UNMERCHABLE_PET && ItemConstants.isPet(itemId)) {
+            return true;
+        }
+        
+        return false;
     }
 
     public Collection<Item> canWearEquipment(MapleCharacter chr, Collection<Item> items) {
@@ -1960,7 +1968,8 @@ public class MapleItemInformationProvider {
                 }
                 ps.close();
                 rs.close();
-                makerEntry = new MakerItemCreateEntry(cost, reqLevel, reqMakerLevel, toGive);
+                makerEntry = new MakerItemCreateEntry(cost, reqLevel, reqMakerLevel);
+                makerEntry.addGainItem(toCreate, toGive);
                 ps = con.prepareStatement("SELECT req_item, count FROM makerrecipedata WHERE itemid = ?");
                 ps.setInt(1, toCreate);
                 rs = ps.executeQuery();
@@ -2000,17 +2009,18 @@ public class MapleItemInformationProvider {
         return -1;
     }
 
-    public int getMakerDisassembledQuantity(Integer itemId) {
-        int avail = 0;
+    public List<Pair<Integer, Integer>> getMakerDisassembledItems(Integer itemId) {
+        List<Pair<Integer, Integer>> items = new LinkedList<>();
+        
         Connection con;
         try {
             con = DatabaseConnection.getConnection();
-            PreparedStatement ps = con.prepareStatement("SELECT count FROM makerrecipedata WHERE itemid = ? AND req_item >= 4260000 AND req_item <= 4260008 ORDER BY count DESC");
+            PreparedStatement ps = con.prepareStatement("SELECT req_item, count FROM makerrecipedata WHERE itemid = ? AND req_item >= 4260000 AND req_item < 4270000");
             ps.setInt(1, itemId);
             ResultSet rs = ps.executeQuery();
 
-            if(rs.next()) {
-                avail = (int) Math.ceil(rs.getInt("count") / 2);   // return to the player half of the crystals needed
+            while (rs.next()) {
+                items.add(new Pair<>(rs.getInt("req_item"), rs.getInt("count") / 2));   // return to the player half of the crystals needed
             }
 
             rs.close();
@@ -2020,7 +2030,7 @@ public class MapleItemInformationProvider {
             e.printStackTrace();
         }
 
-        return avail;
+        return items;
     }
 
     public int getMakerDisassembledFee(Integer itemId) {
@@ -2121,6 +2131,35 @@ public class MapleItemInformationProvider {
 
         return skillbook;
     }
+    
+    public final QuestConsItem getQuestConsumablesInfo(final int itemId) {
+        if (questItemConsCache.containsKey(itemId)) {
+            return questItemConsCache.get(itemId);
+        }
+        MapleData data = getItemData(itemId);
+        
+        MapleData infoData = data.getChildByPath("info");
+        MapleData ciData = infoData.getChildByPath("consumeItem");
+        QuestConsItem qcItem = null;
+        if (ciData != null) {
+            qcItem = new QuestConsItem();
+            qcItem.exp = MapleDataTool.getInt("exp", infoData);
+            qcItem.grade = MapleDataTool.getInt("grade", infoData);
+            qcItem.questid = MapleDataTool.getInt("questId", infoData);
+            qcItem.items = new HashMap<>(2);
+            
+            Map<Integer, Integer> cItems = qcItem.items;
+            for (MapleData ciItem : ciData.getChildren()) {
+                int itemid = MapleDataTool.getInt("0", ciItem);
+                int qty = MapleDataTool.getInt("1", ciItem);
+                
+                cItems.put(itemid, qty);
+            }
+        }
+        
+        questItemConsCache.put(itemId, qcItem);
+        return qcItem;
+    }
 
     public class ScriptedItem {
 
@@ -2152,5 +2191,16 @@ public class MapleItemInformationProvider {
         public int itemid, period;
         public short prob, quantity;
         public String effect, worldmsg;
+    }
+    
+    public static final class QuestConsItem {
+
+        public int questid, exp, grade;
+        public Map<Integer, Integer> items;
+        
+        public Integer getItemRequirement(int itemid) {
+            return items.get(itemid);
+        }
+        
     }
 }

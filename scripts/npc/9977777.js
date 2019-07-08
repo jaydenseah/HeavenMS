@@ -43,6 +43,7 @@ function writeFeatureTab_PQs() {
         addFeature("RnJPQ/HorntailPQ/TreasurePQ/ElnathPQ/HolidayPQ.");
         addFeature("CWKPQ as Expedition-based instance.");
         addFeature("Scarga/Horntail/Showa/Balrog/Zakum/Pinkbean.");
+        addFeature("Expeditions with entry-limit system available.");
         addFeature("GuildPQ & queue with multi-lobby system available.");
         addFeature("Brand-new PQs: BossRushPQ, CafePQ.");
         addFeature("Mu Lung Dojo.");
@@ -57,9 +58,10 @@ function writeFeatureTab_Skills() {
         addFeature("Reviewed many skills, such as Steal and M. Door.");
         addFeature("Heal GMS-like: fixed HP gain & Heal skill packet.");
         addFeature("Improved battleship: HP visible and map-persistent.");
-        addFeature("Maker skill features properly developed.");
+        addFeature("Maker skill features developed - pckts thanks Arnah.");
         addFeature("Chair Mastery - map chair boosts HP/MP rec.");
         addFeature("Mu Lung Dojo skills functional.");
+        addFeature("Monster Magnet skill no longer crashes players.");
 }
 
 function writeFeatureTab_Quests() {
@@ -72,6 +74,7 @@ function writeFeatureTab_Quests() {
         addFeature("Reviewed several 4th job skill questlines.");
         addFeature("Rewarding system now looks up for item stacking.");
         addFeature("3rd job quiz with all 40-question pool available.");
+        addFeature("Item raising functional.");
 }
 
 function writeFeatureTab_PlayerSocialNetwork() {
@@ -113,6 +116,7 @@ function writeFeatureTab_CashItems() {
         addFeature("Reviewed an pet position issue within CASH inventory.");
         addFeature("Reviewed fashion-related contents, almost GMS-like.");
         addFeature("Plastic surgeons/stylists no longer stuck characters.");
+        addFeature("Reworked gachapon loots, website-lists lookalike.");
         addFeature("Scroll for Spikes on Shoes.");
         addFeature("Scroll for Cold Protection.");
         addFeature("Vega's spell.");
@@ -182,6 +186,7 @@ function writeFeatureTab_Playerpotentials() {
         addFeature("Optional cash shop inventory separated by classes.");
         addFeature("Players manage 'same-typed' invites exclusively.");
         addFeature("Player buffs with conditional active effects.");
+        addFeature("Rock-paper-scissors minigame - thanks Arnah!");
 }
 
 function writeFeatureTab_Serverpotentials() {

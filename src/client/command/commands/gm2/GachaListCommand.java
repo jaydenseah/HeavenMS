@@ -17,27 +17,22 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+package client.command.commands.gm2;
 
-/*
-   @Author: Arthur L - Refactored command content into modules
-*/
-package client.command;
+import client.MapleClient;
+import client.command.Command;
 
-class RegisteredCommand {
-
-    private final Class<? extends Command> commandClass;
-    private final int rank;
-
-    RegisteredCommand(Class<? extends Command> commandClass, int rank){
-        this.commandClass = commandClass;
-        this.rank = rank;
+/**
+ *
+ * @author Ronan
+ */
+public class GachaListCommand extends Command {
+    {
+        setDescription("");
     }
 
-    public Class<? extends Command> getCommandClass() {
-        return commandClass;
-    }
-
-    public int getRank() {
-        return rank;
+    @Override
+    public void execute(MapleClient c, String[] params) {
+        c.getAbstractPlayerInteraction().openNpc(10000, "gachaponInfo");
     }
 }
