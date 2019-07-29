@@ -35,6 +35,7 @@ import provider.MapleDataProviderFactory;
 import scripting.AbstractPlayerInteraction;
 import server.MapleItemInformationProvider;
 import server.MapleStatEffect;
+import server.MapleShop;
 import server.MapleShopFactory;
 import server.events.gm.MapleEvent;
 import server.gachapon.MapleGachapon;
@@ -83,6 +84,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import tools.FilePrinter;
 
 /**
  *
@@ -97,9 +99,9 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         private boolean itemScript;
         private List<MaplePartyCharacter> otherParty;
         
-        private static Map<Integer, String> npcDefaultTalks = new HashMap<>();
+        private Map<Integer, String> npcDefaultTalks = new HashMap<>();
         
-        private static String getDefaultTalk(int npcid) {
+        private String getDefaultTalk(int npcid) {
             String talk = npcDefaultTalks.get(npcid);
             if (talk == null) {
                 talk = MapleLifeFactory.getNPCDefaultTalk(npcid);
@@ -400,7 +402,14 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
 	}
         
         public void openShopNPC(int id) {
-            MapleShopFactory.getInstance().getShop(id).sendShop(c);
+            MapleShop shop = MapleShopFactory.getInstance().getShop(id);
+            
+            if (shop != null) {
+                shop.sendShop(c);
+            } else {    // check for missing shopids thanks to resinate
+                FilePrinter.printError(FilePrinter.NPC_UNCODED, "Shop ID: " + id + " is missing from database.");
+                MapleShopFactory.getInstance().getShop(11000).sendShop(c);
+            }
         }
 
 	public void maxMastery() {
@@ -678,6 +687,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                     final MapleCharacter mc;
                     mc = ps.getCharacterById(mpc.getId());
                     if (mc != null) {
+                        mc.setChallenged(false);
                         mc.changeMap(map, map.getPortal(0));
                         mc.announce(MaplePacketCreator.serverNotice(6, LanguageConstants.getMessage(mc, LanguageConstants.CPQEntryLobby)));
                         TimerManager tMan = TimerManager.getInstance();
@@ -715,9 +725,8 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
             }
         }
         
-        private void warpoutCPQLobby() {
-            MapleMap lobbyMap = c.getPlayer().getMap();
-            MapleMap out = this.getWarpMap((lobbyMap.getId() > 980030000) ? 980000000 : 980030000);
+        private void warpoutCPQLobby(MapleMap lobbyMap) {
+            MapleMap out = lobbyMap.getChannelServer().getMapFactory().getMap((lobbyMap.getId() < 980030000) ? 980000000 : 980030000);
             for (MapleCharacter mc : lobbyMap.getAllPlayers()) {
                 mc.resetCP();
                 mc.setTeam(-1);
@@ -729,6 +738,8 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         public void startCPQ(final MapleCharacter challenger, final int field) {
             try {
                 cancelCPQLobby();
+                
+                final MapleMap lobbyMap = getPlayer().getMap();
                 if (challenger != null) {
                     if (challenger.getParty() == null) {
                         throw new RuntimeException("Nao existe oponente!");
@@ -737,7 +748,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                     for (MaplePartyCharacter mpc : challenger.getParty().getMembers()) {
                         MapleCharacter mc = ps.getCharacterById(mpc.getId());
                         if (mc != null) {
-                            mc.changeMap(getPlayer().getMap(), getPlayer().getMap().getPortal(0));
+                            mc.changeMap(lobbyMap, lobbyMap.getPortal(0));
                             TimerManager tMan = TimerManager.getInstance();
                             tMan.schedule(new Runnable() {
                                 @Override
@@ -776,7 +787,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                                 mc.setMonsterCarnival(null);
                             }
                         } catch (NullPointerException npe) {
-                            warpoutCPQLobby();
+                            warpoutCPQLobby(lobbyMap);
                             return;
                         }
                         
@@ -791,6 +802,8 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         public void startCPQ2(final MapleCharacter challenger, final int field) {
             try {
                 cancelCPQLobby();
+                
+                final MapleMap lobbyMap = getPlayer().getMap();
                 if (challenger != null) {
                     if (challenger.getParty() == null) {
                         throw new RuntimeException("Não existe oponente!");
@@ -799,7 +812,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                     for (MaplePartyCharacter mpc : challenger.getParty().getMembers()) {
                         MapleCharacter mc = ps.getCharacterById(mpc.getId());
                         if (mc != null) {
-                            mc.changeMap(getPlayer().getMap(), getPlayer().getMap().getPortal(0));
+                            mc.changeMap(lobbyMap, lobbyMap.getPortal(0));
                             mapClock(10);
                         }
                     }
@@ -820,7 +833,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                                 mc.setMonsterCarnival(null);
                             }
                         } catch (NullPointerException npe) {
-                            warpoutCPQLobby();
+                            warpoutCPQLobby(lobbyMap);
                             return;
                         }
                         
@@ -895,6 +908,7 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
                     final MapleCharacter mc;
                     mc = ps.getCharacterById(mpc.getId());
                     if (mc != null) {
+                        mc.setChallenged(false);
                         mc.changeMap(map, map.getPortal(0));
                         mc.announce(MaplePacketCreator.serverNotice(6, LanguageConstants.getMessage(mc, LanguageConstants.CPQEntryLobby)));
                         TimerManager tMan = TimerManager.getInstance();

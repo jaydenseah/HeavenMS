@@ -1207,9 +1207,15 @@ public class MapleStatEffect {
     }
 
     private Rectangle calculateBoundingBox(Point posFrom, boolean facingLeft) {
-        int multiplier = facingLeft ? 1 : -1;
-        Point mylt = new Point(lt.x * multiplier + posFrom.x, lt.y + posFrom.y);
-        Point myrb = new Point(rb.x * multiplier + posFrom.x, rb.y + posFrom.y);
+        Point mylt;
+        Point myrb;
+        if (facingLeft) {
+            mylt = new Point(lt.x + posFrom.x, lt.y + posFrom.y);
+            myrb = new Point(rb.x + posFrom.x, rb.y + posFrom.y);
+        } else {
+            myrb = new Point(-lt.x + posFrom.x, rb.y + posFrom.y);  // thanks Conrad, April for noticing a disturbance in AoE skill behavior after a hitched refactor here
+            mylt = new Point(-rb.x + posFrom.x, lt.y + posFrom.y);
+        }
         Rectangle bounds = new Rectangle(mylt.x, mylt.y, myrb.x - mylt.x, myrb.y - mylt.y);
         return bounds;
     }
@@ -1334,7 +1340,7 @@ public class MapleStatEffect {
         if (localstatups.size() > 0) {
             byte[] buff = null;
             byte[] mbuff = null;
-            if (getSummonMovementType() == null && this.isActive(applyto)) {
+            if (this.isActive(applyto)) {
                 buff = MaplePacketCreator.giveBuff((skill ? sourceid : -sourceid), localDuration, localstatups);
             }
             if (isDash()) {
@@ -1384,11 +1390,10 @@ public class MapleStatEffect {
             }
 
             if (buff != null) {
-                if (!hasNoIcon()) { //Thanks flav for such a simple release! :)
-                    applyto.announce(buff);
-                } else {
-                    System.out.println("<Error> NO buff icon for id " + sourceid);
-                }
+                //Thanks flav for such a simple release! :)
+                //Thanks Conrad, Atoot for noticing summons not using buff icon
+                
+                applyto.announce(buff);
             }
 
             long starttime = Server.getInstance().getCurrentTime();
@@ -1812,16 +1817,6 @@ public class MapleStatEffect {
                 return SummonMovementType.FOLLOW;
         }
         return null;
-    }
-
-    public boolean hasNoIcon() {
-        return (sourceid == 3111002 || sourceid == 3211002 || + // puppet, puppet
-                sourceid == 3211005 || + // golden eagle
-                sourceid == 2121005 || sourceid == 2221005 || + // elquines, ifrit
-                sourceid == 2321003 || sourceid == 3121006 || + // bahamut, phoenix
-                sourceid == 3221005 || sourceid == 3111005 || + // frostprey, silver hawk
-                sourceid == 2311006 || sourceid == 5220002 || + // summon dragon, wrath of the octopi
-                sourceid == 5211001 || sourceid == 5211002); // octopus, gaviota
     }
 
     public boolean isSkill() {

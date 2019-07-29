@@ -168,6 +168,7 @@ import server.maps.MapleMapItem;
 import net.server.audit.locks.MonitoredLockType;
 import net.server.audit.locks.factory.MonitoredReentrantLockFactory;
 import org.apache.mina.util.ConcurrentHashSet;
+import server.maps.FieldLimit;
 
 public class MapleCharacter extends AbstractMapleCharacterObject {
     private static final MapleItemInformationProvider ii = MapleItemInformationProvider.getInstance();
@@ -791,28 +792,31 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
         }
         return false;
     }
+    
+    public int calculateMaxBaseDamage(int watk, MapleWeaponType weapon) {
+        int mainstat, secondarystat;
+        if (getJob().isA(MapleJob.THIEF) && weapon == MapleWeaponType.DAGGER_OTHER) {
+            weapon = MapleWeaponType.DAGGER_THIEVES;
+        }
+
+        if (weapon == MapleWeaponType.BOW || weapon == MapleWeaponType.CROSSBOW || weapon == MapleWeaponType.GUN) {
+            mainstat = localdex;
+            secondarystat = localstr;
+        } else if (weapon == MapleWeaponType.CLAW || weapon == MapleWeaponType.DAGGER_THIEVES) {
+            mainstat = localluk;
+            secondarystat = localdex + localstr;
+        } else {
+            mainstat = localstr;
+            secondarystat = localdex;
+        }
+        return (int) (((weapon.getMaxDamageMultiplier() * mainstat + secondarystat) / 100.0) * watk);
+    }
 
     public int calculateMaxBaseDamage(int watk) {
         int maxbasedamage;
         Item weapon_item = getInventory(MapleInventoryType.EQUIPPED).getItem((short) -11);
         if (weapon_item != null) {
-            MapleWeaponType weapon = ii.getWeaponType(weapon_item.getItemId());
-            int mainstat, secondarystat;
-            if (getJob().isA(MapleJob.THIEF) && weapon == MapleWeaponType.DAGGER_OTHER) {
-                weapon = MapleWeaponType.DAGGER_THIEVES;
-            }
-
-            if (weapon == MapleWeaponType.BOW || weapon == MapleWeaponType.CROSSBOW || weapon == MapleWeaponType.GUN) {
-                mainstat = localdex;
-                secondarystat = localstr;
-            } else if (weapon == MapleWeaponType.CLAW || weapon == MapleWeaponType.DAGGER_THIEVES) {
-                mainstat = localluk;
-                secondarystat = localdex + localstr;
-            } else {
-                mainstat = localstr;
-                secondarystat = localdex;
-            }
-            maxbasedamage = (int) (((weapon.getMaxDamageMultiplier() * mainstat + secondarystat) / 100.0) * watk);
+            maxbasedamage = calculateMaxBaseDamage(watk, ii.getWeaponType(weapon_item.getItemId()));
         } else {
             if (job.isA(MapleJob.PIRATE) || job.isA(MapleJob.THUNDERBREAKER1)) {
                 double weapMulti = 3;
@@ -829,8 +833,8 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
         return maxbasedamage;
     }
     
-    public int calculateMaxBaseMagicDamage() {
-        int maxbasedamage = getTotalMagic();
+    public int calculateMaxBaseMagicDamage(int matk) {
+        int maxbasedamage = matk;
         int totalint = getTotalInt();
         
         if (totalint > 2000) {
@@ -1109,6 +1113,29 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
             }
         }
     }
+    
+    private void broadcastChangeJob() {
+        for (MapleCharacter chr : map.getAllPlayers()) {
+            MapleClient chrC = chr.getClient();
+
+            if (chrC != null) {     // propagate new job 3rd-person effects (FJ, Aran 1st strike, etc)
+                this.sendDestroyData(chrC);
+                this.sendSpawnData(chrC);
+            }
+        }
+        
+        TimerManager.getInstance().schedule(new Runnable() {    // need to delay to ensure clientside has finished reloading character data
+            @Override
+            public void run() {
+                MapleCharacter thisChr = MapleCharacter.this;
+                MapleMap map = thisChr.getMap();
+                
+                if (map != null) {
+                    map.broadcastMessage(thisChr, MaplePacketCreator.showForeignEffect(thisChr.getId(), 8), false);
+                }
+            }
+        }, 777);
+    }
 
     public synchronized void changeJob(MapleJob newJob) {
         if (newJob == null) {
@@ -1221,7 +1248,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
         setMasteries(this.job.getId());
         guildUpdate();
         
-        getMap().broadcastMessage(this, MaplePacketCreator.showForeignEffect(this.getId(), 8), false);
+        broadcastChangeJob();
         
         if (GameConstants.hasSPTable(newJob) && newJob.getId() != 2001) {
             if (getBuffedValue(MapleBuffStat.MONSTER_RIDING) != null) {
@@ -1275,7 +1302,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
     }
     
     public void broadcastStance() {
-        map.broadcastMessage(this, MaplePacketCreator.movePlayer(id, this.getIdleMovement()), false);
+        map.broadcastMessage(this, MaplePacketCreator.movePlayer(id, this.getIdleMovement(), getIdleMovementDataLength()), false);
     }
     
     public MapleMap getWarpMap(int map) {
@@ -2956,9 +2983,9 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
                             expiration = item.getExpiration();
                             
                             if (expiration != -1 && (expiration < currenttime) && ((item.getFlag() & ItemConstants.LOCK) == ItemConstants.LOCK)) {
-                                byte aids = item.getFlag();
-                                aids &= ~(ItemConstants.LOCK);
-                                item.setFlag(aids); //Probably need a check, else people can make expiring items into permanent items...
+                                short lock = item.getFlag();
+                                lock &= ~(ItemConstants.LOCK);
+                                item.setFlag(lock); //Probably need a check, else people can make expiring items into permanent items...
                                 item.setExpiration(-1);
                                 forceUpdateItem(item);   //TEST :3
                             } else if (expiration != -1 && expiration < currenttime) {
@@ -6099,7 +6126,8 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
     public boolean isPartyLeader() {
         prtLock.lock();
         try {
-            return party.getLeaderId() == getId();
+            MapleParty party = getParty();
+            return party != null && party.getLeaderId() == getId();
         } finally {
             prtLock.unlock();
         }
@@ -6410,7 +6438,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
         prtLock.lock();
         try {
             party = getParty();
-            partyLeader = party != null && isPartyLeader();
+            partyLeader = isPartyLeader();
         } finally {
             prtLock.unlock();
         }
@@ -6932,7 +6960,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
             ret.getInventory(MapleInventoryType.SETUP).setSlotLimit(rs.getByte("setupslots"));
             ret.getInventory(MapleInventoryType.ETC).setSlotLimit(rs.getByte("etcslots"));
             
-            byte sandboxCheck = 0x0;
+            short sandboxCheck = 0x0;
             for (Pair<Item, MapleInventoryType> item : ItemFactory.INVENTORY.loadItems(ret.id, !channelserver)) {
                 sandboxCheck |= item.getLeft().getFlag();
                 
@@ -7062,7 +7090,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
             }
             rs.close();
             ps.close();
-            ps = con.prepareStatement("SELECT name, characterslots FROM accounts WHERE id = ?", Statement.RETURN_GENERATED_KEYS);
+            ps = con.prepareStatement("SELECT name, characterslots, language FROM accounts WHERE id = ?", Statement.RETURN_GENERATED_KEYS);
             ps.setInt(1, ret.accountid);
             rs = ps.executeQuery();
             if (rs.next()) {
@@ -7070,6 +7098,7 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
                 
                 retClient.setAccountName(rs.getString("name"));
                 retClient.setCharacterSlots(rs.getByte("characterslots"));
+                retClient.setLanguage(rs.getInt("language"));   // thanks Zein for noticing user language not overriding default once player is in-game
             }
             rs.close();
             ps.close();
@@ -7402,28 +7431,29 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
         if (possesed > 0) {
             message("You have used a safety charm, so your EXP points have not been decreased.");
             MapleInventoryManipulator.removeById(client, ItemConstants.getInventoryType(charmID[i]), charmID[i], 1, true, false);
-        } else if (mapid > 925020000 && mapid < 925030000) {
-            this.dojoStage = 0;
         } else if (getJob() != MapleJob.BEGINNER) { //Hmm...
-            int XPdummy = ExpTable.getExpNeededForLevel(getLevel());
-            if (getMap().isTown()) {
-                XPdummy /= 100;
-            }
-            if (XPdummy == ExpTable.getExpNeededForLevel(getLevel())) {
-                if (getLuk() <= 100 && getLuk() > 8) {
-                    XPdummy *= (200 - getLuk()) / 2000;
-                } else if (getLuk() < 8) {
-                    XPdummy /= 10;
+            if (!FieldLimit.NO_EXP_DECREASE.check(getMap().getFieldLimit())) {  // thanks Conrad for noticing missing FieldLimit check
+                int XPdummy = ExpTable.getExpNeededForLevel(getLevel());
+                if (getMap().isTown()) {
+                    XPdummy /= 100;
+                }
+                if (XPdummy == ExpTable.getExpNeededForLevel(getLevel())) {
+                    if (getLuk() <= 100 && getLuk() > 8) {
+                        XPdummy *= (200 - getLuk()) / 2000;
+                    } else if (getLuk() < 8) {
+                        XPdummy /= 10;
+                    } else {
+                        XPdummy /= 20;
+                    }
+                }
+                if (getExp() > XPdummy) {
+                    loseExp(XPdummy, false, false);
                 } else {
-                    XPdummy /= 20;
+                    loseExp(getExp(), false, false);
                 }
             }
-            if (getExp() > XPdummy) {
-                loseExp(XPdummy, false, false);
-            } else {
-                loseExp(getExp(), false, false);
-            }
         }
+        
         if (getBuffedValue(MapleBuffStat.MORPH) != null) {
             cancelEffectFromBuffStat(MapleBuffStat.MORPH);
         }
@@ -9168,10 +9198,10 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
     }
     
     private static void setMergeFlag(Item item) {
-        int flag = item.getFlag();
+        short flag = item.getFlag();
         flag |= ItemConstants.MERGE_UNTRADEABLE;
         flag |= ItemConstants.UNTRADEABLE;
-        item.setFlag((byte) flag);
+        item.setFlag(flag);
     }
     
     private List<Equip> getUpgradeableEquipped() {
@@ -9911,6 +9941,10 @@ public class MapleCharacter extends AbstractMapleCharacterObject {
     }
 
     public void autoban(String reason) {
+        if (this.isGM() || this.isBanned()){  // thanks RedHat for noticing GM's being able to get banned
+            return;
+        }
+        
         this.ban(reason);
         announce(MaplePacketCreator.sendPolice(String.format("You have been blocked by the#b %s Police for HACK reason.#k", "HeavenMS")));
         TimerManager.getInstance().schedule(new Runnable() {

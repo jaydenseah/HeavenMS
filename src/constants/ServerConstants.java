@@ -51,10 +51,8 @@ public class ServerConstants {
     public static boolean LOCALSERVER;
 
     //Other Configuration
-    public static boolean JAVA_8;
+    public static final boolean JAVA_8 = getJavaVersion() >= 8;
     public static boolean SHUTDOWNHOOK;
-    // JAVA_8: every static function in AbstractPlayerInteraction are to be made non-static, and code comment sections uncommented after enabling this functionality.
-    
     
     //Server Flags
     public static final boolean USE_CUSTOM_KEYSET = true;           //Enables auto-setup of the HeavenMS's custom keybindings when creating characters.
@@ -116,9 +114,10 @@ public class ServerConstants {
     public static final boolean USE_NPCS_SCRIPTABLE = true;         //Flag to enable/disable serverside predefined script NPCs.
     
     //Events/PQs Configuration
-    public static final boolean USE_OLD_GMS_STYLED_PQ_NPCS = true;  //Enables PQ NPCs with similar behaviour to old GMS style, that skips info about the PQs and immediately tries to register the party in.
-    public static final boolean USE_ENABLE_SOLO_EXPEDITIONS = true; //Enables start expeditions with any number of players. This will also bypass all the Zakum prequest.
-    public static final boolean USE_ENABLE_RECALL_EVENT = true;     //Enables a disconnected player to reaccess the last event instance they were in before logging out. Recall only works if the event isn't cleared or disposed yet. Suggestion thanks to Alisson (Goukken).
+    public static final boolean USE_OLD_GMS_STYLED_PQ_NPCS = true;   //Enables PQ NPCs with similar behaviour to old GMS style, that skips info about the PQs and immediately tries to register the party in.
+    public static final boolean USE_ENABLE_SOLO_EXPEDITIONS = true;  //Enables start expeditions with any number of players. This will also bypass all the Zakum prequest.
+    public static final boolean USE_ENABLE_DAILY_EXPEDITIONS = false;//Enables daily entry limitations in expeditions.
+    public static final boolean USE_ENABLE_RECALL_EVENT = false;      //Enables a disconnected player to reaccess the last event instance they were in before logging out. Recall only works if the event isn't cleared or disposed yet. Suggestion thanks to Alisson (Goukken).
     
     //Announcement Configuration
     public static final boolean USE_ANNOUNCE_SHOPITEMSOLD = false;  //Automatic message sent to owner when an item from the Player Shop or Hired Merchant is sold.
@@ -210,6 +209,7 @@ public class ServerConstants {
     public static final boolean USE_FAST_REUSE_HERO_WILL = true;//Greatly reduce cooldown on Hero's Will.
     public static final boolean USE_ANTI_IMMUNITY_CRASH = true; //Crash skills additionally removes the mob's invincibility buffs. Suggestion thanks to Celestial.
     public static final boolean USE_UNDISPEL_HOLY_SHIELD = true;//Holy shield buff also prevents players from suffering dispel from mobs.
+    public static final boolean USE_FULL_HOLY_SYMBOL = true;    //Holy symbol doesn't require EXP sharers to work in full.
     
     //Character Configuration
     public static final boolean USE_ADD_SLOTS_BY_LEVEL = true;  //Slots are added each 20 levels.
@@ -318,8 +318,7 @@ public class ServerConstants {
             ServerConstants.DB_USER = p.getProperty("DB_USER");
             ServerConstants.DB_PASS = p.getProperty("DB_PASS");
 
-            //java8 And Shutdownhook
-            ServerConstants.JAVA_8 = p.getProperty("JAVA8").equalsIgnoreCase("TRUE");
+            // shutdownhook
             ServerConstants.SHUTDOWNHOOK = p.getProperty("SHUTDOWNHOOK").equalsIgnoreCase("true");
 
         } catch (Exception e) {
@@ -327,5 +326,26 @@ public class ServerConstants {
             System.out.println("Failed to load configuration.ini.");
             System.exit(0);
         }
+    }
+    // https://github.com/openstreetmap/josm/blob/a3a6e8a6b657cf4c5b4c64ea14d6e87be6280d65/src/org/openstreetmap/josm/tools/Utils.java#L1566-L1585
+    /**
+     * Returns the Java version as an int value.
+     * @return the Java version as an int value (8, 9, etc.)
+     * @since 12130
+     */
+    public static int getJavaVersion() {
+        String version = System.getProperty("java.version");
+        if (version.startsWith("1.")) {
+            version = version.substring(2);
+        }
+        // Allow these formats:
+        // 1.8.0_72-ea
+        // 9-ea
+        // 9
+        // 9.0.1
+        int dotPos = version.indexOf('.');
+        int dashPos = version.indexOf('-');
+        return Integer.parseInt(version.substring(0,
+                dotPos > -1 ? dotPos : dashPos > -1 ? dashPos : 1));
     }
 }

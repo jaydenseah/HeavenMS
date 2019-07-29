@@ -159,9 +159,6 @@ public class MapleMap {
     private MapleCharacter mapOwner = null;
     private long mapOwnerLastActivityTime = Long.MAX_VALUE;
     
-    // HPQ
-    private int riceCakes = 0;
-    private int bunnyDamage = 0;
     // events
     private boolean eventstarted = false, isMuted = false;
     private MapleSnowball snowball0 = null;
@@ -390,9 +387,10 @@ public class MapleMap {
     }
     
     public void addMapObject(MapleMapObject mapobject) {
+        int curOID = getUsableOID();
+        
         objectWLock.lock();
         try {
-            int curOID = getUsableOID();
             mapobject.setObjectId(curOID);
             this.mapobjects.put(curOID, mapobject);
         } finally {
@@ -416,11 +414,11 @@ public class MapleMap {
 
     private void spawnAndAddRangedMapObject(MapleMapObject mapobject, DelayedPacketCreation packetbakery, SpawnCondition condition) {
         List<MapleCharacter> inRangeCharacters = new LinkedList<>();
+        int curOID = getUsableOID();
         
         chrRLock.lock();
         objectWLock.lock();
         try {
-            int curOID = getUsableOID();
             mapobject.setObjectId(curOID);
             this.mapobjects.put(curOID, mapobject);
             for (MapleCharacter chr : characters) {
@@ -899,15 +897,16 @@ public class MapleMap {
         return droppedItemCount.get();
     }
     
-    private synchronized void instantiateItemDrop(MapleMapItem mdrop) {
+    private void instantiateItemDrop(MapleMapItem mdrop) {
         if(droppedItemCount.get() >= ServerConstants.ITEM_LIMIT_ON_MAP) {
             MapleMapObject mapobj;
             
             do {
+                mapobj = null;
+                
                 objectWLock.lock();
                 try {
-                    mapobj = registeredDrops.remove(0).get();
-                    while(mapobj == null) {
+                    while (mapobj == null) {
                         if (registeredDrops.isEmpty()) {
                             break;
                         }
@@ -1579,18 +1578,11 @@ public class MapleMap {
 
     public void destroyReactor(int oid) {
         final MapleReactor reactor = getReactorByOid(oid);
-        broadcastMessage(MaplePacketCreator.destroyReactor(reactor));
-        reactor.cancelReactorTimeout();
-        reactor.setAlive(false);
-        removeMapObject(reactor);
         
-        if (reactor.getDelay() > 0) {
-            registerMapSchedule(new Runnable() {
-                @Override
-                public void run() {
-                    respawnReactor(reactor);
-                }
-            }, reactor.getDelay());
+        if (reactor != null) {
+            if (reactor.destroy()) {
+                removeMapObject(reactor);
+            }
         }
     }
 
@@ -1614,9 +1606,14 @@ public class MapleMap {
     
     public final void resetReactors(List<MapleReactor> list) {
         for (MapleReactor r : list) {
+            if (r.forceDelayedRespawn()) {  // thanks Conrad for suggesting reactor with delay respawning immediately
+                continue;
+            }
+            
             r.lockReactor();
             try {
                 r.resetReactorActions(0);
+                r.setAlive(true);
                 broadcastMessage(MaplePacketCreator.triggerReactor(r, 0));
             } finally {
                 r.unlockReactor();
@@ -1745,7 +1742,7 @@ public class MapleMap {
     
     public void destroyNPC(int npcid) {     // assumption: there's at most one of the same NPC in a map.
         List<MapleMapObject> npcs = getMapObjectsInRange(new Point(0, 0), Double.POSITIVE_INFINITY, Arrays.asList(MapleMapObjectType.NPC));
-
+        
         chrRLock.lock();
         objectWLock.lock();
         try {
@@ -1864,35 +1861,8 @@ public class MapleMap {
         spawnMonster(mob);
     }
 
-    public void addBunnyHit() {
-        bunnyDamage++;
-        if (bunnyDamage > 5) {
-            broadcastMessage(MaplePacketCreator.serverNotice(6, "The Moon Bunny is feeling sick. Please protect it so it can make delicious rice cakes."));
-            bunnyDamage = 0;
-        }
-    }
-
     private void monsterItemDrop(final MapleMonster m, long delay) {
-        final ScheduledFuture<?> monsterItemDrop = TimerManager.getInstance().register(new Runnable() {
-            @Override
-            public void run() {
-                List<MapleMapObject> chrList = MapleMap.this.getPlayers();
-                
-                if (m.isAlive() && !chrList.isEmpty()) {
-                    MapleCharacter chr = (MapleCharacter) chrList.get(0);
-                    
-                    if (m.getId() == 9300061) {
-                        MapleMap.this.riceCakes++;
-                        MapleMap.this.broadcastMessage(MaplePacketCreator.serverNotice(6, "The Moon Bunny made rice cake number " + (MapleMap.this.riceCakes) + "."));
-                    }
-                    
-                    dropFromFriendlyMonster(chr, m);
-                }
-            }
-        }, delay, delay);
-        if (!m.isAlive()) {
-            monsterItemDrop.cancel(true);
-        }
+        m.dropFromFriendlyMonster(delay);
     }
 
     public void spawnFakeMonsterOnGroundBelow(MapleMonster mob, Point pos) {
@@ -2136,19 +2106,6 @@ public class MapleMap {
                 c.announce(reactor.makeSpawnData());
             }
         });
-
-    }
-
-    private void respawnReactor(final MapleReactor reactor) {
-        reactor.lockReactor();
-        try {
-            reactor.resetReactorActions(0);
-            reactor.setAlive(true);
-        } finally {
-            reactor.unlockReactor();
-        }
-        
-        spawnReactor(reactor);
     }
 
     public void spawnDoor(final MapleDoorObject door) {
@@ -2259,6 +2216,11 @@ public class MapleMap {
     }
 
     public final void spawnItemDrop(final MapleMapObject dropper, final MapleCharacter owner, final Item item, Point pos, final byte dropType, final boolean playerDrop) {
+        if (FieldLimit.DROP_LIMIT.check(this.getFieldLimit())) { // thanks Conrad for noticing some maps shouldn't have loots available
+            this.disappearingItemDrop(dropper, owner, item, pos);
+            return;
+        }
+        
         final Point droppos = calcDropPos(pos, pos);
         final MapleMapItem mdrop = new MapleMapItem(item, droppos, dropper, owner, owner.getClient(), dropType, playerDrop);
         mdrop.setDropTime(Server.getInstance().getCurrentTime());
@@ -2612,6 +2574,7 @@ public class MapleMap {
                 break;
             }
         }
+        chr.commitExcludedItems();  // thanks OishiiKawaiiDesu for noticing pet item ignore registry erasing upon changing maps
         
         if (chr.getMonsterCarnival() != null) {
             chr.getClient().announce(MaplePacketCreator.getClock(chr.getMonsterCarnival().getTimeLeftSeconds()));
@@ -3580,6 +3543,7 @@ public class MapleMap {
                                         reactor.lockReactor();
                                         try {
                                             reactor.resetReactorActions(0);
+                                            reactor.setAlive(true);
                                             broadcastMessage(MaplePacketCreator.triggerReactor(reactor, 0));
                                         } finally {
                                             reactor.unlockReactor();
@@ -3936,10 +3900,6 @@ public class MapleMap {
 
     public int getFieldLimit() {
         return fieldLimit;
-    }
-
-    public void resetRiceCakes() {
-        this.riceCakes = 0;
     }
 
     public void allowSummonState(boolean b) {

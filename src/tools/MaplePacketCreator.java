@@ -35,48 +35,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import net.opcodes.SendOpcode;
-import net.server.PlayerCoolDownValueHolder;
-import net.server.Server;
-import net.server.channel.Channel;
-import net.server.channel.handlers.PlayerInteractionHandler;
-import net.server.channel.handlers.SummonDamageHandler.SummonAttackEntry;
-import net.server.guild.MapleAlliance;
-import net.server.guild.MapleGuild;
-import net.server.guild.MapleGuildCharacter;
-import net.server.guild.MapleGuildSummary;
-import net.server.world.MapleParty;
-import net.server.world.MaplePartyCharacter;
-import net.server.world.PartyOperation;
-import server.CashShop.CashItem;
-import server.CashShop.CashItemFactory;
-import server.CashShop.SpecialCashItem;
-import server.DueyPackage;
-import server.MTSItemInfo;
-import server.MapleItemInformationProvider;
-import server.MapleShopItem;
-import server.MapleTrade;
-import server.events.gm.MapleSnowball;
-import server.life.MapleMonster;
-import server.life.MapleNPC;
-import server.life.MobSkill;
-import server.maps.MapleHiredMerchant;
-import server.maps.MapleDoor;
-import server.maps.MapleDoorObject;
-import server.maps.MapleDragon;
-import server.maps.MapleMap;
-import server.maps.MapleMapItem;
-import server.maps.MapleMist;
-import server.maps.MapleMiniGame;
-import server.maps.MapleMiniGame.MiniGameResult;
-import server.maps.MaplePlayerShop;
-import server.maps.MaplePlayerShopItem;
-import server.maps.MapleReactor;
-import server.maps.MapleSummon;
-import server.life.MaplePlayerNPC;
-import server.movement.LifeMovementFragment;
-import tools.data.output.LittleEndianWriter;
-import tools.data.output.MaplePacketLittleEndianWriter;
 import client.BuddylistEntry;
 import client.MapleBuffStat;
 import client.MapleCharacter;
@@ -110,8 +68,51 @@ import constants.ServerConstants;
 import constants.skills.Buccaneer;
 import constants.skills.Corsair;
 import constants.skills.ThunderBreaker;
-import scripting.npc.NPCConversationManager;
+import net.opcodes.SendOpcode;
+import net.server.PlayerCoolDownValueHolder;
+import net.server.Server;
+import net.server.channel.Channel;
+import net.server.channel.handlers.PlayerInteractionHandler;
+import net.server.channel.handlers.SummonDamageHandler.SummonAttackEntry;
+import net.server.guild.MapleAlliance;
+import net.server.guild.MapleGuild;
+import net.server.guild.MapleGuildCharacter;
+import net.server.guild.MapleGuildSummary;
+import net.server.world.MapleParty;
+import net.server.world.MaplePartyCharacter;
+import net.server.world.PartyOperation;
+import server.CashShop.CashItem;
+import server.CashShop.CashItemFactory;
+import server.CashShop.SpecialCashItem;
+import server.DueyPackage;
+import server.MTSItemInfo;
+import server.MapleItemInformationProvider;
+import server.MapleShopItem;
+import server.MapleTrade;
+import server.events.gm.MapleSnowball;
+import server.life.MapleMonster;
+import server.life.MapleNPC;
+import server.life.MaplePlayerNPC;
+import server.life.MobSkill;
 import server.maps.AbstractMapleMapObject;
+import server.maps.MapleDoor;
+import server.maps.MapleDoorObject;
+import server.maps.MapleDragon;
+import server.maps.MapleHiredMerchant;
+import server.maps.MapleMap;
+import server.maps.MapleMapItem;
+import server.maps.MapleMiniGame;
+import server.maps.MapleMiniGame.MiniGameResult;
+import server.maps.MapleMist;
+import server.maps.MaplePlayerShop;
+import server.maps.MaplePlayerShopItem;
+import server.maps.MapleReactor;
+import server.maps.MapleSummon;
+import server.movement.LifeMovementFragment;
+import tools.data.input.SeekableLittleEndianAccessor;
+import tools.data.output.LittleEndianWriter;
+import tools.data.output.MaplePacketLittleEndianWriter;
+import java.util.TimeZone;
 
 /**
  *
@@ -120,20 +121,23 @@ import server.maps.AbstractMapleMapObject;
 public class MaplePacketCreator {
 
         public static final List<Pair<MapleStat, Integer>> EMPTY_STATUPDATE = Collections.emptyList();
-        private final static long FT_UT_OFFSET = 116444628000000000L;
+        private final static long FT_UT_OFFSET = 116444736010800000L + (10000L * TimeZone.getDefault().getOffset(System.currentTimeMillis())); // normalize with timezone offset suggested by Ari
         private final static long DEFAULT_TIME = 150842304000000000L;//00 80 05 BB 46 E6 17 02
         public final static long ZERO_TIME = 94354848000000000L;//00 40 E0 FD 3B 37 4F 01
         private final static long PERMANENT = 150841440000000000L; // 00 C0 9B 90 7D E5 17 02
 
-        private static long getTime(long realTimestamp) {
-                if (realTimestamp == -1) {
-                        return DEFAULT_TIME;//high number ll
-                } else if (realTimestamp == -2) {
-                        return ZERO_TIME;
-                } else if (realTimestamp == -3) {
-                        return PERMANENT;
+        private static long getTime(long utcTimestamp) {
+                if (utcTimestamp < 0 && utcTimestamp >= -3) {
+                        if (utcTimestamp == -1) {
+                                return DEFAULT_TIME;    //high number ll
+                        } else if (utcTimestamp == -2) {
+                                return ZERO_TIME;
+                        } else {
+                                return PERMANENT;
+                        }
                 }
-                return realTimestamp * 10000 + FT_UT_OFFSET;
+                
+                return utcTimestamp * 10000 + FT_UT_OFFSET;
         }
 
         public static byte[] showHpHealed(int cid, int amount) { 
@@ -333,7 +337,7 @@ public class MaplePacketCreator {
                 if (!viewall) {
                         mplew.write(0);
                 }
-                if (chr.isGM()) {
+                if (chr.isGM() || chr.isGmJob()) {  // thanks Egg Daddy (Ubaware), resinate for noticing GM jobs crashing on non-GM players account
                         mplew.write(0);
                         return;
                 }
@@ -361,7 +365,7 @@ public class MaplePacketCreator {
                         mplew.writeLong(getTime(q.getCompletionTime()));
                 }
         }
-
+        
         private static void addExpirationTime(final MaplePacketLittleEndianWriter mplew, long time) {
                 mplew.writeLong(getTime(time)); // offset expiration time issue found thanks to Thora
         }
@@ -1807,6 +1811,11 @@ public class MaplePacketCreator {
         }
 
         public static byte[] dropItemFromMapObject(MapleCharacter player, MapleMapItem drop, Point dropfrom, Point dropto, byte mod) {
+                int dropType = drop.getDropType();
+                if (drop.hasClientsideOwnership(player) && dropType < 3) {
+                    dropType = 2;
+                }
+            
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.DROP_ITEM_FROM_MAPOBJECT.getValue());
                 mplew.write(mod);
@@ -1814,7 +1823,7 @@ public class MaplePacketCreator {
                 mplew.writeBool(drop.getMeso() > 0); // 1 mesos, 0 item, 2 and above all item meso bag,
                 mplew.writeInt(drop.getItemId()); // drop object ID
                 mplew.writeInt(drop.getClientsideOwnerId()); // owner charid/partyid :)
-                mplew.write(drop.hasClientsideOwnership(player) ? 2 : drop.getDropType()); // 0 = timeout for non-owner, 1 = timeout for non-owner's party, 2 = FFA, 3 = explosive/FFA
+                mplew.write(dropType); // 0 = timeout for non-owner, 1 = timeout for non-owner's party, 2 = FFA, 3 = explosive/FFA
                 mplew.writePos(dropto);
                 mplew.writeInt(drop.getDropper().getObjectId()); // dropper oid, found thanks to Li Jixue
 
@@ -2269,33 +2278,41 @@ public class MaplePacketCreator {
                 return mplew.getPacket();
         }
 
+        private static void rebroadcastMovementList(LittleEndianWriter lew, SeekableLittleEndianAccessor slea, long movementDataLength) {
+        	//movement command length is sent by client, probably not a big issue? (could be calculated on server)
+        	//if multiple write/reads are slow, could use a (cached?) byte[] buffer
+        	for(long i = 0; i < movementDataLength; i++) {
+        		lew.write(slea.readByte());
+        	}
+        }
+        
         private static void serializeMovementList(LittleEndianWriter lew, List<LifeMovementFragment> moves) {
-                lew.write(moves.size());
-                for (LifeMovementFragment move : moves) {
-                        move.serialize(lew);
-                }
+        	lew.write(moves.size());
+        	for(LifeMovementFragment move : moves) {
+        		move.serialize(lew);
+        	}
         }
 
-        public static byte[] movePlayer(int cid, List<LifeMovementFragment> moves) {
+        public static byte[] movePlayer(int cid, SeekableLittleEndianAccessor movementSlea, long movementDataLength) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.MOVE_PLAYER.getValue());
                 mplew.writeInt(cid);
                 mplew.writeInt(0);
-                serializeMovementList(mplew, moves);
+                rebroadcastMovementList(mplew, movementSlea, movementDataLength);
                 return mplew.getPacket();
         }
 
-        public static byte[] moveSummon(int cid, int oid, Point startPos, List<LifeMovementFragment> moves) {
+        public static byte[] moveSummon(int cid, int oid, Point startPos, SeekableLittleEndianAccessor movementSlea, long movementDataLength) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.MOVE_SUMMON.getValue());
                 mplew.writeInt(cid);
                 mplew.writeInt(oid);
                 mplew.writePos(startPos);
-                serializeMovementList(mplew, moves);
+                rebroadcastMovementList(mplew, movementSlea, movementDataLength);
                 return mplew.getPacket();
         }
         
-        public static byte[] moveMonster(int oid, boolean skillPossible, int skill, int skillId, int skillLevel, int pOption, Point startPos, List<LifeMovementFragment> moves) {
+        public static byte[] moveMonster(int oid, boolean skillPossible, int skill, int skillId, int skillLevel, int pOption, Point startPos, SeekableLittleEndianAccessor movementSlea, long movementDataLength) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.MOVE_MONSTER.getValue());
                 mplew.writeInt(oid);
@@ -2306,7 +2323,7 @@ public class MaplePacketCreator {
                 mplew.write(skillLevel);
                 mplew.writeShort(pOption);
                 mplew.writePos(startPos);
-                serializeMovementList(mplew, moves);
+                rebroadcastMovementList(mplew, movementSlea, movementDataLength);
                 return mplew.getPacket();
         }
         
@@ -2565,6 +2582,13 @@ public class MaplePacketCreator {
                         mplew.writeMapleAsciiString(e.getKey().getName());
                         mplew.writeInt(e.getValue());
                 }
+                return mplew.getPacket();
+        }
+        
+        public static byte[] updateWitchTowerScore(int score) {
+                MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
+                mplew.writeShort(SendOpcode.WITCH_TOWER_SCORE_UPDATE.getValue());
+                mplew.write(score);
                 return mplew.getPacket();
         }
         
@@ -6093,12 +6117,12 @@ public class MaplePacketCreator {
                 return mplew.getPacket();
         }
         
+        
         public static byte[] sendNameTransferCheck(boolean canUseName) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.CASHSHOP_CHECK_NAME_CHANGE.getValue());
                 mplew.writeShort(0);
                 mplew.writeBool(!canUseName);
-                
                 return mplew.getPacket();
         }
         
@@ -6200,16 +6224,23 @@ public class MaplePacketCreator {
                 return mplew.getPacket();
         }
         
-        public static byte[] showCouponRedeemedItem(int itemid) {
+        public static byte[] showCouponRedeemedItems(int accountId, int maplePoints, int mesos, List<Item> cashItems, List<Pair<Integer, Integer>> items) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.CASHSHOP_OPERATION.getValue());
-                mplew.writeShort(0x49); //v72
-                mplew.writeInt(0);
-                mplew.writeInt(1);
-                mplew.writeShort(1);
-                mplew.writeShort(0x1A);
-                mplew.writeInt(itemid);
-                mplew.writeInt(0);
+                mplew.write(0x59);
+                mplew.write((byte)cashItems.size());
+                for(Item item : cashItems) {
+                    addCashItemInformation(mplew, item, accountId);
+                }
+                mplew.writeInt(maplePoints);
+                mplew.writeInt(items.size());
+                for(Pair<Integer, Integer> itemPair : items) {
+                    int quantity = itemPair.getLeft();
+                    mplew.writeShort((short) quantity); //quantity (0 = 1 for cash items)
+                    mplew.writeShort(0x1F); //0 = ?, >=0x20 = ?, <0x20 = ? (does nothing?)
+                    mplew.writeInt(itemPair.getRight());
+                }
+                mplew.writeInt(mesos);
                 return mplew.getPacket();
         }
 
@@ -8011,12 +8042,12 @@ public class MaplePacketCreator {
                 return mplew.getPacket();
         }
 
-        public static byte[] moveDragon(MapleDragon dragon, Point startPos, List<LifeMovementFragment> res) {
+        public static byte[] moveDragon(MapleDragon dragon, Point startPos, SeekableLittleEndianAccessor movementSlea, long movementDataLength) {
                 final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
                 mplew.writeShort(SendOpcode.MOVE_DRAGON.getValue());
                 mplew.writeInt(dragon.getOwner().getId());
                 mplew.writePos(startPos);
-                serializeMovementList(mplew, res);
+                rebroadcastMovementList(mplew, movementSlea, movementDataLength);
                 return mplew.getPacket();
         }
 
