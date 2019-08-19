@@ -12828,7 +12828,7 @@ CREATE TABLE IF NOT EXISTS `dueypackages` (
   `SenderName` varchar(13) NOT NULL,
   `Mesos` int(10) unsigned DEFAULT '0',
   `TimeStamp` timestamp NOT NULL DEFAULT '2015-01-01 05:00:00',
-  `Message` varchar(200) NOT NULL DEFAULT "",
+  `Message` varchar(200) NULL,
   `Checked` tinyint(1) unsigned DEFAULT '1',
   `Type` tinyint(1) unsigned DEFAULT '0',
   PRIMARY KEY (`PackageId`)
@@ -16341,6 +16341,17 @@ CREATE TABLE IF NOT EXISTS `mts_items` (
   `flag` int(2) unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
+
+CREATE TABLE IF NOT EXISTS `namechanges` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `characterid` int(11) NOT NULL,
+  `old` varchar(13) NOT NULL,
+  `new` varchar(13) NOT NULL,
+  `requestTime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completionTime` timestamp NULL,
+  PRIMARY KEY (`id`),
+  INDEX (characterid)
+) ENGINE=InnoDB  DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
 
 CREATE TABLE IF NOT EXISTS `newyear` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -21417,6 +21428,17 @@ CREATE TABLE IF NOT EXISTS `wishlists` (
   `sn` int(11) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
+
+CREATE TABLE IF NOT EXISTS `worldtransfers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `characterid` int(11) NOT NULL,
+  `from` tinyint(3) NOT NULL,
+  `to` tinyint(3) NOT NULL,
+  `requestTime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completionTime` timestamp NULL,
+  PRIMARY KEY (`id`),
+  INDEX (characterid)
+) ENGINE=InnoDB  DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
 
 
 ALTER TABLE `dueyitems`

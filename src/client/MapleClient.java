@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Lock;
 
+import jdk.nashorn.api.scripting.NashornScriptEngine;
 import tools.*;
 
 import javax.script.ScriptEngine;
@@ -106,7 +107,7 @@ public class MapleClient {
 	private long lastPong;
 	private int gmlevel;
 	private Set<String> macs = new HashSet<>();
-	private Map<String, ScriptEngine> engines = new HashMap<>();
+	private Map<String, NashornScriptEngine> engines = new HashMap<>();
 	private byte characterSlots = 3;
 	private byte loginattempt = 0;
 	private String pin = "";
@@ -121,6 +122,7 @@ public class MapleClient {
 	private final Lock lock = MonitoredReentrantLockFactory.createLock(MonitoredLockType.CLIENT, true);
         private final Lock encoderLock = MonitoredReentrantLockFactory.createLock(MonitoredLockType.CLIENT_ENCODER, true);
         private static final Lock loginLocks[] = new Lock[200];  // thanks Masterrulax & try2hack for pointing out a bottleneck issue here
+    private Calendar tempBanCalendar;
 	private int votePoints;
 	private int voteTime = -1;
         private int visibleWorlds;
@@ -640,7 +642,7 @@ public class MapleClient {
                 }
 	}
 
-	public Calendar getTempBanCalendar() {
+	public Calendar getTempBanCalendarFromDB() {
 		Connection con = null;
 		PreparedStatement ps = null;
 		ResultSet rs = null;
@@ -654,10 +656,12 @@ public class MapleClient {
 				return null;
 			}
 			long blubb = rs.getLong("tempban");
-			if (blubb == 0) { // basically if timestamp in db is 0000-00-00
+			
+			if (blubb == 0 || rs.getString("tempban").equals("2018-06-20 00:00:00.0")) { // 0000-00-00 or 2018-06-20 (default set in LoginPasswordHandler)
 				return null;
 			}
 			lTempban.setTimeInMillis(rs.getTimestamp("tempban").getTime());
+			tempBanCalendar = lTempban;
 			return lTempban;
 		} catch (SQLException e) {
                     e.printStackTrace();
@@ -677,6 +681,14 @@ public class MapleClient {
 			}
 		}
 		return null;//why oh why!?!
+	}
+	
+	public Calendar getTempBanCalendar() {
+	    return tempBanCalendar;
+	}
+	
+	public boolean hasBeenBanned() {
+	    return tempBanCalendar != null;
 	}
 
 	public static long dottedQuadToLong(String dottedQuad) throws RuntimeException {
@@ -1017,6 +1029,7 @@ public class MapleClient {
                                         player.saveCharToDB(true);
                                         
 					player.logOff();
+					if(ServerConstants.INSTANT_NAME_CHANGE) player.doPendingNameChange();
                                         clear();
 				} else {
                                         getChannelServer().removePlayer(player);
@@ -1162,11 +1175,11 @@ public class MapleClient {
 		gmlevel = level;
 	}
 
-	public void setScriptEngine(String name, ScriptEngine e) {
+	public void setScriptEngine(String name, NashornScriptEngine e) {
                 engines.put(name, e);
 	}
 
-	public ScriptEngine getScriptEngine(String name) {
+	public NashornScriptEngine getScriptEngine(String name) {
 		return engines.get(name);
 	}
 
@@ -1328,6 +1341,10 @@ public class MapleClient {
         public short getAvailableCharacterWorldSlots() {
                 return (short) Math.max(0, characterSlots - Server.getInstance().getAccountWorldCharacterCount(accId, world));
 	}
+        
+    public short getAvailableCharacterWorldSlots(int world) {
+        return (short) Math.max(0, characterSlots - Server.getInstance().getAccountWorldCharacterCount(accId, world));
+    }
         
 	public short getCharacterSlots() {
 		return characterSlots;
